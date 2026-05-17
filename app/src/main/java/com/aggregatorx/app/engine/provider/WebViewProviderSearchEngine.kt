@@ -89,7 +89,7 @@ class WebViewProviderSearchEngine(private val context: Context) {
                 engine.scrollToBottom(1)
             }
 
-            // CRITICAL FIX 4: Securely await the HTML snapshot asynchronously
+            // Securely await the HTML snapshot asynchronously
             val finalHtml = suspendCancellableCoroutine<String> { continuation ->
                 webView.evaluateJavascript("document.documentElement.outerHTML") { result ->
                     val html = result?.trim('"')?.replace("\\\"", "\"") ?: ""
@@ -122,7 +122,7 @@ class WebViewProviderSearchEngine(private val context: Context) {
             val doc = Jsoup.parse(html, provider.baseUrl)
             val results = mutableListOf<SearchResult>()
 
-            // CRITICAL FIX 5: Fallback list parser system to match across different formats
+            // Fallback list parser system to match across different dynamic formats
             var resultElements = doc.select("tr:has(a), .result-item, .search-result, .torrent-box, .play-row, [class*='item']:has(a)")
 
             if (resultElements.isEmpty()) {
@@ -150,16 +150,18 @@ class WebViewProviderSearchEngine(private val context: Context) {
                     }
 
                     // Strict filter to discard site UI utility links
-                    val junkWords = listOf("home", "login", "register", "sign up", "faq", "about", "contact", "privacy", "terms", "logout")
+                    val junkWords = listOf("home", "login", "register", "sign up", "faq", "about", "contact", "privacy", "terms", "logout", "index")
                     val isJunk = junkWords.any { title.equals(it, ignoreCase = true) } || url.contains(".css") || url.contains(".js") || url.startsWith("#")
 
                     if (url.isNotEmpty() && title.isNotEmpty() && !isJunk && title.length > 3) {
+                        // FIXED: Correct parameters passed matching your SearchResult model
                         results.add(
                             SearchResult(
                                 title = title,
                                 url = url,
                                 quality = quality,
-                                provider = provider.name,
+                                providerId = provider.id,
+                                providerName = provider.name,
                                 relevanceScore = 0.8f
                             )
                         )
