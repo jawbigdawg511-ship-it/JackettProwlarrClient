@@ -295,3 +295,16 @@ class EndpointDiscoveryEngine @Inject constructor(
         fun isExpired() = System.currentTimeMillis() - timestamp > CACHE_TTL_MS
     }
 }
+
+/** All endpoints discovered for a single domain. */
+data class DiscoveredEndpoints(
+    val domain: String,
+    val baseUrl: String,
+    val searchEndpoints: List<String> = emptyList(),
+    val apiEndpoints: List<String> = emptyList(),
+    val sitemapUrls: List<String> = emptyList(),
+    val detectedCms: String? = null,
+    val hasGraphQL: Boolean = false,
+    val hasOpenAPI: Boolean = false,
+    val discoveredAt: Long = System.currentTimeMillis()
+)
