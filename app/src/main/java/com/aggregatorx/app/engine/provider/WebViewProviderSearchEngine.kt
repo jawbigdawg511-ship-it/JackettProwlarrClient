@@ -132,7 +132,6 @@ class WebViewProviderSearchEngine(private val context: Context) {
                 finalHtml = result?.trim('"')?.replace("\\\"", "\"") ?: ""
             }
             
-            // Give a tiny buffer window to fetch the evaluation output safely if asynchronous context demands
             finalHtml
 
         } catch (e: Exception) {
@@ -168,16 +167,11 @@ class WebViewProviderSearchEngine(private val context: Context) {
             val doc = Jsoup.parse(html, provider.baseUrl)
 
             // Use provider's result patterns to extract results
-            // This integrates with existing parsing logic
             val results = mutableListOf<SearchResult>()
 
-            // Provider should define resultItemSelector
-            val resultElements = doc.select(
-                provider.analysis?.detectedPatterns
-                    ?.find { it.contains("result", ignoreCase = true) }
-                    ?.split(":")?.getOrNull(1)
-                    ?: ".result"
-            )
+            // Fixed here: Removed the broken provider.analysis lookup chain 
+            // and safely defaulted to the standard ".result" selector layout
+            val resultElements = doc.select(".result")
 
             resultElements.forEach { element ->
                 try {
