@@ -28,8 +28,7 @@ import kotlin.math.max
 
 /**
  * Advanced Multi-Provider Scraping Engine
- * 
- * Features:
+ * * Features:
  * - Concurrent resilient scraping (one failure never stops the engine)
  * - NLP-powered query understanding and semantic result matching
  * - Smart Navigation to bypass category/genre landing pages
@@ -102,13 +101,11 @@ class ScrapingEngine @Inject constructor(
 
     /**
      * Search across all enabled providers concurrently.
-     * 
-     * FRESH RESULTS GUARANTEE:
+     * * FRESH RESULTS GUARANTEE:
      * - When useCache=false, always performs fresh scraping (no stale results)
      * - When useCache=true, checks cache TTL before returning cached results
      * - Pagination state (pages map) is respected for each provider
-     * 
-     * @param query The search query
+     * * @param query The search query
      * @param useCache If false, bypasses all caching and always scrapes fresh
      * @param pages Map of providerId -> pageNumber for pagination support
      */
@@ -450,7 +447,7 @@ class ScrapingEngine @Inject constructor(
                 analysis != null -> scrapeWithAnalysis(provider, query, analysis, pageNum)
                 else -> scrapeGeneric(provider, query, pageNum)
             }
-            
+           
             updateProviderHealth(provider.id, true, System.currentTimeMillis() - startTime)
             ProviderSearchResults(provider, results, System.currentTimeMillis() - startTime, true)
         } catch (e: Exception) {
@@ -492,8 +489,15 @@ class ScrapingEngine @Inject constructor(
             val title = extractText(item, c.titleSelector)
             val url = extractUrl(item, c.urlSelector, p.baseUrl)
             if (title.isEmpty() || url.isEmpty()) return@mapNotNull null
-            SearchResult(p.id, p.name, title, url, c.descriptionSelector?.let { extractText(item, it) }, 
-                c.thumbnailSelector?.let { extractImageUrl(item, it, p.baseUrl) }, relevanceScore = calculateRelevanceScore(title, q))
+            SearchResult(
+                providerId = p.id,
+                providerName = p.name,
+                title = title,
+                url = url,
+                description = c.descriptionSelector?.let { extractText(item, it) },
+                thumbnailUrl = c.thumbnailSelector?.let { extractImageUrl(item, it, p.baseUrl) },
+                relevanceScore = calculateRelevanceScore(title, q)
+            )
         }
     }
 
@@ -505,7 +509,15 @@ class ScrapingEngine @Inject constructor(
         doc.select(selector).mapNotNull { item ->
             val title = extractBestTitle(item)
             val u = extractUrlFromItem(item, p.baseUrl)
-            if (title.isEmpty()) null else SearchResult(p.id, p.name, title, u, relevanceScore = calculateRelevanceScore(title, q))
+            if (title.isEmpty()) null else SearchResult(
+                providerId = p.id,
+                providerName = p.name,
+                title = title,
+                url = u,
+                description = null,
+                thumbnailUrl = null,
+                relevanceScore = calculateRelevanceScore(title, q)
+            )
         }
     }
 
@@ -515,7 +527,7 @@ class ScrapingEngine @Inject constructor(
         val patterns = listOf("${p.baseUrl}/search?q=$enc$pageParam", "${p.baseUrl}/?s=$enc$pageParam", "${p.baseUrl}/search/$enc$pageParam")
         for (url in patterns) {
             try {
-                val doc = fetchDocument(url)
+               val doc = fetchDocument(url)
                 val results = extractResultsGeneric(doc, p, q)
                 if (results.isNotEmpty()) return@withContext results
             } catch (_: Exception) {}
@@ -529,14 +541,30 @@ class ScrapingEngine @Inject constructor(
             val title = extractBestTitle(item)
             val u = extractUrlFromItem(item, p.baseUrl)
             if (title.isEmpty() || u.contains("javascript:")) null 
-            else SearchResult(p.id, p.name, title, u, extractBestDescription(item), extractBestThumbnail(item, p.baseUrl), relevanceScore = calculateRelevanceScore(title, q))
+            else SearchResult(
+                providerId = p.id,
+                providerName = p.name,
+                title = title,
+                url = u,
+                description = extractBestDescription(item),
+                thumbnailUrl = extractBestThumbnail(item, p.baseUrl),
+                relevanceScore = calculateRelevanceScore(title, q)
+            )
         }
     }
 
     private suspend fun scrapeWithTabCrawl(p: Provider, q: String, pageNum: Int = 0): List<SearchResult> {
         val links = smartNavigationEngine.crawlCategoryTabsForQuery(p.baseUrl, q, 5 + (pageNum * 5))
         return links.drop(pageNum * 5).take(5).map { 
-            SearchResult(p.id, p.name, it.title, it.url, null, it.thumbnail, relevanceScore = calculateRelevanceScore(it.title, q))
+            SearchResult(
+                providerId = p.id,
+                providerName = p.name,
+                title = it.title,
+                url = it.url,
+                description = null,
+                thumbnailUrl = it.thumbnail,
+                relevanceScore = calculateRelevanceScore(it.title, q)
+            )
         }
     }
 
@@ -547,7 +575,15 @@ class ScrapingEngine @Inject constructor(
 
     private fun extractAllContentFromPage(doc: Document, p: Provider): List<SearchResult> {
         return smartNavigationEngine.extractContentLinks(doc, p.baseUrl).map { 
-            SearchResult(p.id, p.name, it.title, it.url, null, it.thumbnail, 0f)
+            SearchResult(
+                providerId = p.id,
+                providerName = p.name,
+                title = it.title,
+                url = it.url,
+                description = null,
+                thumbnailUrl = it.thumbnail,
+                relevanceScore = 0f
+            )
         }
     }
 
