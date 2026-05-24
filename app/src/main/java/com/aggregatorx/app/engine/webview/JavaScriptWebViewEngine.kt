@@ -6,7 +6,7 @@ import android.os.Looper
 import android.webkit.*
 import com.aggregatorx.app.engine.util.AppContextHolder
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.Json
 import kotlin.coroutines.resume
 import android.util.Log
 
@@ -154,62 +154,35 @@ class JavaScriptWebViewEngine(private val existingWebView: WebView? = null) {
                         }
                         var resumed = false
 
-                        fun done(html: String) {
-                            if (!resumed) {
-                                resumed = true
-                                if (cont.isActive) cont.resume(html)
-                            }
-                        }
+            val js = """
+            (function() {
+                const searchInput = document.querySelector('$searchSelector');
+                if (searchInput) {
+                    searchInput.value = '$query';
+                    searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    searchInput.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                const submitBtn = document.querySelector('$submitSelector');
+                if (submitBtn) {
+                    submitBtn.click();
+                }
+            })();
+            """.trimIndent()
 
-                        cont.invokeOnCancellation { done("") }
+            webView.evaluateJavascript(js, null)
 
-                        val escaped = query.replace("'", "\\\'")
-                        val js = """
-                            (function(){
-                                var inp = document.querySelector('$searchSelector');
-                                if(inp){
-                                    inp.value='$escaped';
-                                    inp.dispatchEvent(new Event('input',{bubbles:true}));
-                                    inp.dispatchEvent(new Event('change',{bubbles:true}));
-                                }
-                                var btn = document.querySelector('$submitSelector');
-                                if(btn) btn.click();
-                            })();
-                        """.trimIndent()
-
-                        try {
-                            wv.evaluateJavascript(js) { }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error evaluating JS", e)
-                            done("")
-                            return@post
-                        }
-
-                        val start = System.currentTimeMillis()
-                        val check = object : Runnable {
-                            override fun run() {
-                                try {
-                                    wv.evaluateJavascript(
-                                        "(function(){ return document.querySelectorAll('$resultSelector').length; })()"
-                                    ) { res ->
-                                        try {
-                                            val count = res?.trim('"')?.toIntOrNull() ?: 0
-                                            val elapsed = System.currentTimeMillis() - start
-                                            if (count > 0 || elapsed >= timeoutMs - 1_000) {
-                                                captureHtml(wv) { done(it) }
-                                            } else {
-                                                wv.postDelayed(this, 600)
-                                            }
-                                        } catch (e: Exception) {
-                                            Log.e(TAG, "Error checking result count", e)
-                                            captureHtml(wv) { done(it) }
-                                        }
-                                    }
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Error in result check runnable", e)
-                                    captureHtml(wv) { done(it) }
-                                }
-                            }
+            val startTime = System.currentTimeMillis()
+            var checkRunnable: Runnable? = null
+            
+            checkRunnable = Runnable {
+                webView.evaluateJavascript(
+                    "(function() { return document.querySelectorAll('$resultSelector').length > 0; })();"
+                ) { result ->
+                    val found = result?.contains("true") ?: false
+                    if (found || (System.currentTimeMillis() - startTime) >= (timeoutMs - 1000)) {
+                        webView.evaluateJavascript("document.documentElement.outerHTML") { finalHtml ->
+                            val html = finalHtml?.trim('"')?.replace("\\\"", "\"") ?: ""
+                            safeResume(html)
                         }
                         wv.postDelayed(check, 1_500)
                     } catch (e: Exception) {
@@ -224,26 +197,24 @@ class JavaScriptWebViewEngine(private val existingWebView: WebView? = null) {
         }
     } ?: ""
 
-    /**
-     * Scroll to bottom with error handling.
-     */
-    suspend fun scrollToBottom(scrollCount: Int = 3) {
-        repeat(scrollCount) {
-            try {
-                suspendCancellableCoroutine<Unit> { cont ->
-                    mainHandler.post {
-                        try {
-                            val wv = existingWebView ?: run {
-                                if (cont.isActive) cont.resume(Unit)
-                                return@post
-                            }
-                            wv.evaluateJavascript("window.scrollBy(0, window.innerHeight * 2); true;", null)
-                            wv.postDelayed({ if (cont.isActive) cont.resume(Unit) }, 1_800)
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error scrolling", e)
-                            if (cont.isActive) cont.resume(Unit)
-                        }
-                    }
+    suspend fun extractAllLinks(selector: String = "a[href]"): List<String> {
+        return suspendCancellableCoroutine { continuation ->
+            webView.evaluateJavascript(
+                """
+                (function() {
+                    const links = Array.from(document.querySelectorAll('$selector'))
+                        .map(a => a.href)
+                        .filter(href => href && href.startsWith('http'));
+                    return JSON.stringify(links);
+                })();
+                """.trimIndent()
+            ) { result ->
+                try {
+                    val json = result?.trim('"')?.replace("\\\"", "\"") ?: "[]"
+                    val links = Json.decodeFromString<List<String>>(json)
+                    continuation.resume(links)
+                } catch (e: Exception) {
+                    continuation.resume(emptyList())
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error in scrollToBottom", e)
