@@ -6,6 +6,7 @@ import android.os.Looper
 import android.webkit.*
 import com.aggregatorx.app.engine.util.AppContextHolder
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlin.coroutines.resume
 
@@ -158,6 +159,29 @@ class JavaScriptWebViewEngine(private val existingWebView: WebView? = null) {
                 }
             }
         }
+
+    // ── Scroll support ────────────────────────────────────────────────────────
+
+    suspend fun scrollToBottom(iterations: Int = 5) {
+        suspendCancellableCoroutine { cont ->
+            mainHandler.post {
+                val wv = existingWebView ?: run { if (cont.isActive) cont.resume(Unit); return@post }
+                var count = 0
+                val scrollRunnable = object : Runnable {
+                    override fun run() {
+                        if (count < iterations) {
+                            wv.evaluateJavascript("window.scrollBy(0, document.body.scrollHeight);", null)
+                            count++
+                            wv.postDelayed(this, 1_000)
+                        } else {
+                            if (cont.isActive) cont.resume(Unit)
+                        }
+                    }
+                }
+                wv.post(scrollRunnable)
+            }
+        }
+    }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
 
