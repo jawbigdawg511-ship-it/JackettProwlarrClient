@@ -7,7 +7,9 @@ import android.webkit.WebSettings
 import kotlinx.coroutines.*
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
+import javax.inject.Singleton
 
+@Singleton
 class WebViewFetcher @Inject constructor(
     private val context: Context
 ) {
