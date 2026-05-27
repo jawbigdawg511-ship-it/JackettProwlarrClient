@@ -29,7 +29,7 @@ class WebViewFetcher @Inject constructor(
                 javaScriptEnabled = true
                 domStorageEnabled = false
                 databaseEnabled = false
-                mixedContentMode = WebSettings.MIXED_CONTENT_NEVER
+                mixedContentMode = 1  // WebSettings.MIXED_CONTENT_NEVER
                 cacheMode = WebSettings.LOAD_NO_CACHE
                 defaultTextEncodingName = "utf-8"
             }
